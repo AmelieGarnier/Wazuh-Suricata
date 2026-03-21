@@ -5,6 +5,41 @@
 
 ---
 
+## Présentation de Wazuh
+
+Wazuh est une solution open-source de SIEM (Security Information and Event Management) qui permet de surveiller l'infrastructure en temps réel, détecter les menaces et répondre aux incidents. Elle excelle dans les domaines suivants :
+
+- **Détection des intrusions (IDS)** — Analyse comportementale et détection d'anomalies
+- **Surveillance de l'intégrité des fichiers (FIM)** — Détection de modifications non autorisées
+- **Réponse aux incidents** — Automatisation des actions de remédiation (Active Response)
+- **Conformité réglementaire** — PCI-DSS, GDPR, HIPAA, CIS
+- **Analyse de vulnérabilités** — Identification des failles de sécurité
+- **Détection de malwares** — Intégration avec VirusTotal
+
+### Architecture all-in-one (single-node)
+
+Tous les composants sont installés sur un seul serveur. Cette configuration est adaptée aux environnements de test, petites infrastructures (< 100 agents) et POC.
+
+| Composant | Rôle |
+|-----------|------|
+| **Wazuh Indexer** (OpenSearch) | Stockage, indexation et recherche des données |
+| **Wazuh Manager** | Cœur du système — analyse, corrélation, alertes |
+| **Filebeat** | Collecte et transmission des logs vers l'Indexer |
+| **Wazuh Dashboard** | Interface web de visualisation et gestion |
+
+> Pour les environnements de production à grande échelle, une architecture **multi-node** avec serveurs dédiés est recommandée.
+
+### Spécifications de la VM
+
+| Ressource | Valeur |
+|-----------|--------|
+| OS | Debian 12 (Bookworm) 64-bit |
+| RAM | 8 GB |
+| CPU | 4 cœurs |
+| Disque | 100 GB |
+
+---
+
 ## Table des matières
 
 1. [Prérequis](#1-prérequis)
@@ -19,6 +54,15 @@
 ---
 
 ## 1. Prérequis
+
+Avant de commencer, s'assurer que :
+
+- Accès `root` sur la machine Debian 12
+- Connexion Internet stable
+- Ports disponibles : `443` (Dashboard), `9200` (Indexer), `1514-1515` (Manager)
+- Mises à jour système appliquées
+
+> Toutes les commandes sont exécutées en tant que `root` — pas besoin de `sudo`.
 
 ### Outils système
 
@@ -106,14 +150,22 @@ apt install -y wazuh-indexer wazuh-manager wazuh-dashboard
 # Configurer l'adresse réseau
 micro /etc/wazuh-indexer/opensearch.yml
 # → network.host: "192.168.111.62"
+# Alternative pour écouter sur toutes les interfaces : network.host: "0.0.0.0"
+
+# Définir la variable NODE_NAME (doit correspondre au nom dans config.yml)
+NODE_NAME=node-1
 
 # Déployer les certificats
 mkdir /etc/wazuh-indexer/certs
 tar -xf ./wazuh-certificates.tar -C /etc/wazuh-indexer/certs/ \
-  ./node-1.pem ./node-1-key.pem ./admin.pem ./admin-key.pem ./root-ca.pem
+  ./$NODE_NAME.pem ./$NODE_NAME-key.pem ./admin.pem ./admin-key.pem ./root-ca.pem
 
-mv /etc/wazuh-indexer/certs/node-1.pem     /etc/wazuh-indexer/certs/indexer.pem
-mv /etc/wazuh-indexer/certs/node-1-key.pem /etc/wazuh-indexer/certs/indexer-key.pem
+# Erreur fréquente : "fichier non trouvé" → vérifier :
+# 1. echo $NODE_NAME  (variable bien définie)
+# 2. ls -lh wazuh-certificates.tar  (archive présente)
+
+mv /etc/wazuh-indexer/certs/$NODE_NAME.pem     /etc/wazuh-indexer/certs/indexer.pem
+mv /etc/wazuh-indexer/certs/$NODE_NAME-key.pem /etc/wazuh-indexer/certs/indexer-key.pem
 chmod 500 /etc/wazuh-indexer/certs
 chmod 400 /etc/wazuh-indexer/certs/*
 chown -R wazuh-indexer:wazuh-indexer /etc/wazuh-indexer/certs
@@ -157,6 +209,7 @@ micro /etc/filebeat/filebeat.yml
 filebeat keystore create
 echo admin | filebeat keystore add username --stdin --force
 echo admin | filebeat keystore add password --stdin --force
+# ⚠️ Note de sécurité : en production, remplacer admin/admin par des identifiants personnalisés
 
 # Installer le template et le module Wazuh
 curl -so /etc/filebeat/wazuh-template.json \
@@ -167,13 +220,17 @@ curl -s https://packages.wazuh.com/4.x/filebeat/wazuh-filebeat-0.4.tar.gz \
   | tar -xvz -C /usr/share/filebeat/module
 
 # Certificats Filebeat
+# Définir le nom du nœud serveur (doit correspondre au config.yml)
+NODE_NAME=wazuh-1
+
 mkdir /etc/filebeat/certs
 tar -xf ./wazuh-certificates.tar -C /etc/filebeat/certs/ \
-  ./wazuh-1.pem ./wazuh-1-key.pem ./root-ca.pem
-mv /etc/filebeat/certs/wazuh-1.pem     /etc/filebeat/certs/filebeat.pem
-mv /etc/filebeat/certs/wazuh-1-key.pem /etc/filebeat/certs/filebeat-key.pem
+  ./$NODE_NAME.pem ./$NODE_NAME-key.pem ./root-ca.pem
+mv /etc/filebeat/certs/$NODE_NAME.pem     /etc/filebeat/certs/filebeat.pem
+mv /etc/filebeat/certs/$NODE_NAME-key.pem /etc/filebeat/certs/filebeat-key.pem
 chmod 500 /etc/filebeat/certs
 chmod 400 /etc/filebeat/certs/*
+chown -R root:root /etc/filebeat/certs
 
 # Démarrer
 systemctl daemon-reload

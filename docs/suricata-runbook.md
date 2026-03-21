@@ -86,7 +86,19 @@ af-packet:
     cluster-id: 99
     cluster-type: cluster_flow
     defrag: yes
+    use-mmap: yes
 ```
+
+Explications des paramètres :
+
+| Paramètre | Valeur | Description |
+|-----------|--------|-------------|
+| `interface` | ens192 | Interface réseau principale |
+| `threads` | 2 | Traitement parallèle (adapter au nombre de cœurs CPU) |
+| `cluster-id` | 99 | Identifiant unique pour l'équilibrage de charge |
+| `cluster-type` | cluster_flow | Tous les paquets d'un flux → même thread (cohérence d'analyse) |
+| `defrag` | yes | Reconstitution des paquets IP fragmentés → analyse complète |
+| `use-mmap` | yes | Amélioration des performances avec RSS → réduction de la latence |
 
 > **AF_PACKET** permet la capture haute performance directement depuis le noyau Linux sans copie mémoire.
 
@@ -185,9 +197,14 @@ suricata-update
 ```
 
 **Résultat attendu :**
-- Téléchargement : ~5,2 Mo depuis `emergingthreats.net`
+- Source : `https://rules.emergingthreats.net/open/suricata6.0.10/emerging.rules.tar.gz`
+- Téléchargement : ~5,2 Mo
 - Règles chargées : 62 149
-- Règles actives déployées : **46 334**
+- Règles désactivées (protocoles non utilisés) : 14
+- Règles flowbit auto-activées (dépendances de corrélation) : 136
+- Règles actives déployées : **46 334** (74,6%)
+
+> **Flowbits** : mécanisme permettant de corréler plusieurs événements réseau. Certaines règles nécessitent que d'autres soient activées pour fonctionner. Les 136 règles auto-activées garantissent la cohérence des détections basées sur des corrélations.
 
 ### 4.4 Valider la configuration
 
@@ -197,18 +214,17 @@ suricata -T -c /etc/suricata/suricata.yaml -v
 
 > Doit retourner `Configuration provided was successfully loaded.`
 
-### 4.5 Architecture des fichiers de règles
+### 4.5 Architecture des fichiers
 
-```
-/var/lib/suricata/rules/
-├── suricata.rules          # Règles consolidées (46 334)
-└── classification.config   # Classification des alertes
-
-/etc/suricata/suricata.yaml # Configuration principale
-/var/log/suricata/
-├── eve.json                # Événements structurés JSON
-└── stats.log               # Statistiques de performance
-```
+| Fichier | Emplacement |
+|---------|-------------|
+| Configuration principale | `/etc/suricata/suricata.yaml` |
+| Règles consolidées (46 334) | `/var/lib/suricata/rules/suricata.rules` |
+| Règles distribuées | `/etc/suricata/rules/` |
+| Classification des alertes | `/var/lib/suricata/rules/classification.config` |
+| Logs JSON (EVE) | `/var/log/suricata/eve.json` |
+| Statistiques | `/var/log/suricata/stats.log` |
+| Cache des sources | `/var/lib/suricata/update/cache/` |
 
 ---
 
@@ -254,12 +270,19 @@ systemctl restart wazuh-manager
 ### 5.4 Vérifier l'intégration
 
 ```bash
-# Vérifier que Wazuh lit le fichier
-tail -f /var/ossec/logs/ossec.log | grep suricata
+# Vérifier que Wazuh lit le fichier eve.json
+grep -i suricata /var/ossec/logs/ossec.log
+grep -i "eve.json" /var/ossec/logs/ossec.log
 
 # Inspecter les événements JSON Suricata
 tail -50 /var/log/suricata/eve.json | jq
+
+# Exemple d'événement DNS attendu :
+# { "timestamp", "in_iface": "ens192", "event_type": "dns",
+#   "src_ip", "dest_ip", "proto", "dns": { "type", "queries", "answers" } }
 ```
+
+> La vérification confirme que le composant `wazuh-logcollector` analyse bien `/var/log/suricata/eve.json`. Des erreurs de décodage persistantes sur les événements `stats` (volumineux) sont normales — les alertes de sécurité sont bien transmises.
 
 ---
 
@@ -324,10 +347,11 @@ micro /etc/logrotate.d/suricata
 ### 7.1 Générer des événements de test
 
 ```bash
-# Test de connectivité réseau (génère des événements DNS/HTTP)
-curl -I http://testmynids.org/uid/index.html
-
-# Test avec une règle de détection connue (GPL ATTACK_RESPONSE)
+# Test 1 : déclencher une règle de détection spécifique
+curl http://testmynids.org/uid/index.html
+sleep 2
+# Test 2 : déclencher la règle GPL ATTACK_RESPONSE
+# (la réponse retourne uid=0(root) gid=0(root) groups=0(root))
 curl http://www.testmyids.com
 ```
 
@@ -345,7 +369,15 @@ tail -50 /var/log/suricata/eve.json | jq '{type: .event_type, src: .src_ip, dest
 
 1. Aller dans **Threat Hunting** → **Events**
 2. Filtrer par `data.event_type: alert`
-3. Les alertes Suricata apparaissent avec les métadonnées complètes (signature, catégorie, sévérité)
+3. Les alertes Suricata apparaissent avec les métadonnées complètes :
+   - Signature (`alert.signature`)
+   - Catégorie (`alert.category`)
+   - Sévérité (`alert.severity`)
+   - IP source / destination
+   - Port et protocole
+   - Timestamp
+
+> Exemple d'alerte attendue : **GPL ATTACK_RESPONSE id check returned root** — déclenchée par le test `curl http://www.testmyids.com`
 
 ---
 
