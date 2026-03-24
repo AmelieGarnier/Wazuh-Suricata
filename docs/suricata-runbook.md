@@ -47,12 +47,6 @@ apt update && apt upgrade -y
 ```bash
 # Suricata + jq (traitement JSON)
 apt install -y suricata jq
-
-# Gestionnaire de dépôts
-apt install -y software-properties-common
-
-# Python (outils d'intégration)
-apt install -y python3-pip
 ```
 
 **Versions installées :**
@@ -61,9 +55,34 @@ apt install -y python3-pip
 |--------|---------|
 | suricata | 6.0.10 |
 | jq | 1.6-2.1 |
-| software-properties-common | 0.99.30-4.1 |
 
-> Le paquet `linux-image-6.1.0-25-amd64` est installé automatiquement comme dépendance pour la capture réseau AF_PACKET.
+### Désactiver les offloads réseau (performance AF_PACKET)
+
+La désactivation de GRO/LRO évite des problèmes de checksum et garantit une capture complète des paquets :
+
+```bash
+ethtool -K ens192 gro off lro off
+```
+
+Rendre persistant via systemd :
+
+```bash
+cat > /etc/systemd/system/disable-offload.service << 'EOF'
+[Unit]
+Description=Disable GRO/LRO on ens192
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ethtool -K ens192 gro off lro off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable disable-offload
+systemctl start disable-offload
+```
 
 ---
 
@@ -135,7 +154,19 @@ vars:
     TEREDO_PORTS: 3544
 ```
 
-### 3.5 Configuration des logs EVE-JSON
+### 3.5 Chemin des règles
+
+Vérifier que cette section est présente dans `suricata.yaml` :
+
+```yaml
+default-rule-path: /var/lib/suricata/rules
+rule-files:
+  - suricata.rules
+```
+
+> Sans cette configuration, `suricata-update` dépose bien les règles mais Suricata démarre avec **0 règle chargée**.
+
+### 3.6 Configuration des logs EVE-JSON
 
 Section `outputs` (lignes ~85-118) :
 
@@ -220,7 +251,7 @@ suricata -T -c /etc/suricata/suricata.yaml -v
 |---------|-------------|
 | Configuration principale | `/etc/suricata/suricata.yaml` |
 | Règles consolidées (46 334) | `/var/lib/suricata/rules/suricata.rules` |
-| Règles distribuées | `/etc/suricata/rules/` |
+| Règles locales custom (non gérées par suricata-update) | `/etc/suricata/rules/` |
 | Classification des alertes | `/var/lib/suricata/rules/classification.config` |
 | Logs JSON (EVE) | `/var/log/suricata/eve.json` |
 | Statistiques | `/var/log/suricata/stats.log` |
@@ -263,7 +294,8 @@ analysisd.decoder_order_size=512
 
 ```bash
 chmod 644 /var/log/suricata/eve.json
-chown root:root /var/log/suricata/eve.json
+# Ne pas changer l'owner — Suricata doit pouvoir écrire dans ce fichier
+# Vérifier l'owner actuel : ls -la /var/log/suricata/eve.json
 systemctl restart wazuh-manager
 ```
 
@@ -485,7 +517,7 @@ tail -f /var/ossec/logs/ossec.log | grep -i "suricata\|eve\|json"
 
 # 4. Corriger les permissions si nécessaire
 chmod 644 /var/log/suricata/eve.json
-chown root:root /var/log/suricata/eve.json
+# Ne pas modifier l'owner : Suricata doit conserver l'accès en écriture
 systemctl restart wazuh-manager
 ```
 
