@@ -59,10 +59,19 @@ Avant de commencer, s'assurer que :
 
 - Accès `root` sur la machine Debian 12
 - Connexion Internet stable
-- Ports disponibles : `443` (Dashboard), `9200` (Indexer), `1514-1515` (Manager)
+- Ports disponibles : `443` (Dashboard), `9200` (Indexer), `1514-1515` (Manager), `55000` (API Wazuh Manager)
 - Mises à jour système appliquées
 
 > Toutes les commandes sont exécutées en tant que `root` — pas besoin de `sudo`.
+
+### Paramètre noyau requis (OpenSearch)
+
+OpenSearch (Wazuh Indexer) requiert un `vm.max_map_count` élevé. Sans ce paramètre, le service refuse de démarrer.
+
+```bash
+sysctl -w vm.max_map_count=262144
+echo "vm.max_map_count=262144" >> /etc/sysctl.conf
+```
 
 ### Outils système
 
@@ -101,9 +110,9 @@ apt-get install -y debconf adduser procps curl gnupg apt-transport-https debhelp
 ### Générer les certificats SSL/TLS
 
 ```bash
-# Télécharger les outils
-curl -sO https://packages.wazuh.com/4.8/wazuh-certs-tool.sh
-curl -sO https://packages.wazuh.com/4.8/config.yml
+# Télécharger les outils — version 4.13
+curl -sO https://packages.wazuh.com/4.13/wazuh-certs-tool.sh
+curl -sO https://packages.wazuh.com/4.13/config.yml
 ```
 
 Éditer `config.yml` avec les noms et IPs de vos nœuds :
@@ -139,6 +148,16 @@ rm -rf ./wazuh-certificates
 ```bash
 apt install -y wazuh-indexer wazuh-manager wazuh-dashboard
 ```
+
+### Désactiver le dépôt après installation
+
+Pour éviter une mise à jour automatique non maîtrisée :
+
+```bash
+sed -i "s/^deb/#deb/" /etc/apt/sources.list.d/wazuh.list && apt-get update
+```
+
+> Pour réactiver lors d'une mise à jour intentionnelle : `sed -i "s/^#deb/deb/" /etc/apt/sources.list.d/wazuh.list && apt-get update`
 
 ---
 
@@ -197,9 +216,9 @@ systemctl status wazuh-manager
 ```bash
 apt install -y filebeat
 
-# Télécharger la configuration
+# Télécharger la configuration — version 4.13
 curl -so /etc/filebeat/filebeat.yml \
-  https://packages.wazuh.com/4.8/tpl/wazuh/filebeat/filebeat.yml
+  https://packages.wazuh.com/4.13/tpl/wazuh/filebeat/filebeat.yml
 
 # Configurer l'IP de l'Indexer dans filebeat.yml
 micro /etc/filebeat/filebeat.yml
@@ -211,12 +230,8 @@ echo admin | filebeat keystore add username --stdin --force
 echo admin | filebeat keystore add password --stdin --force
 # ⚠️ Note de sécurité : en production, remplacer admin/admin par des identifiants personnalisés
 
-# Installer le template et le module Wazuh
-curl -so /etc/filebeat/wazuh-template.json \
-  https://raw.githubusercontent.com/wazuh/wazuh/v4.8.2/extensions/elasticsearch/7.x/wazuh-template.json
-chmod go+r /etc/filebeat/wazuh-template.json
-
-curl -s https://packages.wazuh.com/4.x/filebeat/wazuh-filebeat-0.4.tar.gz \
+# Installer le module Wazuh — version 0.5
+curl -s https://packages.wazuh.com/4.x/filebeat/wazuh-filebeat-0.5.tar.gz \
   | tar -xvz -C /usr/share/filebeat/module
 
 # Certificats Filebeat
@@ -267,6 +282,28 @@ systemctl status wazuh-manager wazuh-indexer wazuh-dashboard
 ```
 
 **Accès web :** `https://192.168.111.62` — identifiants par défaut : `admin / admin`
+
+> ⚠️ **Changer le mot de passe admin** après la première connexion via le Dashboard → Administration → Security → Users.
+
+### 3.5 Configurer la connexion Dashboard → Manager (API)
+
+```bash
+micro /usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+```
+
+```yaml
+hosts:
+  - default:
+      url: https://192.168.111.62
+      port: 55000
+      username: wazuh-wui
+      password: wazuh-wui
+      run_as: true
+```
+
+```bash
+systemctl restart wazuh-dashboard
+```
 
 ---
 
@@ -398,7 +435,13 @@ micro /var/ossec/etc/ossec.conf
   <hosts>
     <host>https://192.168.111.62:9200</host>
   </hosts>
-  ...
+  <ssl>
+    <certificate_authorities>
+      <ca>/etc/wazuh-indexer/certs/root-ca.pem</ca>
+    </certificate_authorities>
+    <certificate>/etc/filebeat/certs/filebeat.pem</certificate>
+    <key>/etc/filebeat/certs/filebeat-key.pem</key>
+  </ssl>
 </indexer>
 ```
 
@@ -524,13 +567,18 @@ systemctl status wazuh-indexer
 # 2. Vérifier l'écoute réseau
 ss -tulpn | grep 9200
 
-# 3. Vérifier la configuration
+# 3. Vérifier vm.max_map_count (cause la plus fréquente)
+sysctl vm.max_map_count
+# → doit retourner 262144. Si inférieur :
+sysctl -w vm.max_map_count=262144
+
+# 4. Vérifier la configuration
 cat /etc/wazuh-indexer/opensearch.yml | grep network.host
 
-# 4. Consulter les logs
+# 5. Consulter les logs
 tail -50 /var/log/wazuh-indexer/wazuh-indexer.log
 
-# 5. Autoriser le port si firewall actif
+# 6. Autoriser le port si firewall actif
 ufw allow 9200/tcp
 ```
 
