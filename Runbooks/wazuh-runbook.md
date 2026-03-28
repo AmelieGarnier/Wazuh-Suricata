@@ -70,7 +70,7 @@ Avant de commencer, s'assurer que :
 ### Passer root
 
 ```bash
-sudo -i
+su
 ```
 
 ### Corriger le PATH (commandes sbin manquantes)
