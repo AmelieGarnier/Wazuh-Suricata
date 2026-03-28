@@ -36,7 +36,7 @@ Tous les composants sont installés sur un seul serveur. Cette configuration est
 | OS | Debian 13 64-bit |
 | RAM | 8 GB |
 | CPU | 4 cœurs |
-| Disque | 100 GB |
+| Disque | 200 GB |
 | Réseau | Mode pont (Bridged) — obligatoire |
 
 ---
