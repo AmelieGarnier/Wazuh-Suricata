@@ -49,8 +49,9 @@ Tous les composants sont installés sur un seul serveur. Cette configuration est
 4. [Intégration des agents](#4-intégration-des-agents)
 5. [Configuration FIM](#5-configuration-fim)
 6. [Active Response — Brute Force](#6-active-response--brute-force)
-7. [Opérations courantes](#7-opérations-courantes)
-8. [Troubleshooting](#8-troubleshooting)
+7. [Intégration VirusTotal](#7-intégration-virustotal)
+8. [Opérations courantes](#8-opérations-courantes)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -761,7 +762,316 @@ ssh <utilisateur>@<IP-VICTIME>
 
 ---
 
-## 7. Opérations courantes
+## 7. Intégration VirusTotal
+
+L'intégration VirusTotal permet à Wazuh de soumettre automatiquement le hash SHA256 de tout fichier détecté par FIM à l'API VirusTotal. En cas de détection positive (fichier malveillant), une alerte est générée et une Active Response peut supprimer le fichier automatiquement.
+
+### 7.1 Fonctionnement
+
+```
+Fichier détecté par FIM
+        ↓
+Hash SHA256 extrait
+        ↓
+API VirusTotal interrogée
+        ↓
+┌────────────────┬──────────────────────────┐
+│  Non détecté   │  Détecté (malveillant)   │
+│  → Aucune      │  → Alerte niveau 12      │
+│    action      │  → Active Response       │
+│                │    supprime le fichier   │
+└────────────────┴──────────────────────────┘
+```
+
+| Composant | Rôle |
+|-----------|------|
+| **FIM (syscheck)** | Détecte les nouveaux fichiers et extrait leur hash |
+| **Integration VirusTotal** | Envoie le hash à l'API et analyse la réponse |
+| **Active Response** | Supprime automatiquement le fichier malveillant |
+
+### 7.2 Prérequis
+
+- Compte VirusTotal gratuit sur [virustotal.com](https://www.virustotal.com)
+- FIM activé sur les agents (cf. section 5)
+- `jq` installé sur les agents Linux
+- Python 3 + PyInstaller sur les agents Windows
+
+**Obtenir la clé API VirusTotal :**
+
+1. Se connecter sur virustotal.com
+2. Menu utilisateur → **Settings** → **API Key**
+3. Copier la clé (limite : 4 requêtes/min avec le compte gratuit)
+
+### 7.3 Configuration Manager — ossec.conf
+
+```bash
+micro /var/ossec/etc/ossec.conf
+```
+
+Ajouter le bloc `<integration>` dans `<ossec_config>` :
+
+```xml
+<integration>
+  <name>virustotal</name>
+  <api_key><VOTRE_CLE_API_VIRUSTOTAL></api_key>
+  <group>syscheck</group>
+  <alert_format>json</alert_format>
+</integration>
+```
+
+> Le paramètre `<group>syscheck</group>` déclenche l'intégration sur toutes les alertes FIM. Pour cibler uniquement les nouveaux fichiers ajoutés, utiliser `<rule_id>554</rule_id>` à la place.
+
+### 7.4 Règles personnalisées — local_rules.xml
+
+```bash
+micro /var/ossec/etc/rules/local_rules.xml
+```
+
+Ajouter avant la balise fermante `</group>` finale (ou créer un nouveau groupe) :
+
+```xml
+<group name="virustotal,">
+
+  <rule id="100092" level="12">
+    <if_sid>657</if_sid>
+    <match>Successfully removed threat</match>
+    <description>Active Response: fichier malveillant supprimé — $(parameters.alert.data.virustotal.source.file)</description>
+  </rule>
+
+  <rule id="100093" level="14">
+    <if_sid>657</if_sid>
+    <match>Error removing threat</match>
+    <description>Active Response: échec de suppression — $(parameters.alert.data.virustotal.source.file)</description>
+  </rule>
+
+</group>
+```
+
+### 7.5 Active Response — Configuration Manager
+
+Ajouter dans `/var/ossec/etc/ossec.conf` :
+
+```xml
+<command>
+  <name>remove-threat</name>
+  <executable>remove-threat.sh</executable>
+  <timeout_allowed>no</timeout_allowed>
+</command>
+
+<active-response>
+  <disabled>no</disabled>
+  <command>remove-threat</command>
+  <location>local</location>
+  <rules_group>virustotal</rules_group>
+</active-response>
+```
+
+Redémarrer le Manager :
+
+```bash
+systemctl restart wazuh-manager
+```
+
+### 7.6 Configuration Agent Linux
+
+#### Installer jq
+
+```bash
+apt install -y jq
+```
+
+#### Activer FIM en temps réel sur le répertoire à surveiller
+
+Dans `/var/ossec/etc/ossec.conf` de l'agent :
+
+```xml
+<syscheck>
+  <disabled>no</disabled>
+  <directories realtime="yes" check_all="yes">/root,/home,/tmp</directories>
+</syscheck>
+```
+
+#### Créer le script de suppression Active Response
+
+```bash
+micro /var/ossec/active-response/bin/remove-threat.sh
+```
+
+```bash
+#!/bin/bash
+
+LOCAL=$(dirname "$0")
+cd "$LOCAL" || exit
+cd ../ || exit
+
+read INPUT_JSON
+FILENAME=$(echo "$INPUT_JSON" | jq -r '.parameters.alert.data.virustotal.source.file')
+COMMAND=$(echo "$INPUT_JSON" | jq -r '.command')
+LOG_FILE="$(pwd)/../logs/active-responses.log"
+
+echo "$(date '+%Y/%m/%d %H:%M:%S') - remove-threat started" >> "${LOG_FILE}"
+echo "$(date '+%Y/%m/%d %H:%M:%S') - Command: ${COMMAND}" >> "${LOG_FILE}"
+echo "$(date '+%Y/%m/%d %H:%M:%S') - File: ${FILENAME}" >> "${LOG_FILE}"
+
+if [ "${COMMAND}" = "add" ]; then
+    if rm -f "${FILENAME}"; then
+        echo "$(date '+%Y/%m/%d %H:%M:%S') Successfully removed threat: ${FILENAME}" >> "${LOG_FILE}"
+    else
+        echo "$(date '+%Y/%m/%d %H:%M:%S') Error removing threat: ${FILENAME}" >> "${LOG_FILE}"
+    fi
+fi
+```
+
+Appliquer les permissions :
+
+```bash
+chmod 750 /var/ossec/active-response/bin/remove-threat.sh
+chown root:wazuh /var/ossec/active-response/bin/remove-threat.sh
+```
+
+Redémarrer l'agent :
+
+```bash
+systemctl restart wazuh-agent
+```
+
+### 7.7 Configuration Agent Windows
+
+#### Activer FIM en temps réel
+
+Dans `C:\Program Files (x86)\ossec-agent\ossec.conf` :
+
+```xml
+<syscheck>
+  <disabled>no</disabled>
+  <directories realtime="yes">C:\Users\<NOM_UTILISATEUR>\Downloads,C:\Users\<NOM_UTILISATEUR>\Desktop</directories>
+</syscheck>
+```
+
+#### Créer le script de suppression Active Response
+
+Installer Python 3 avec l'option **"Add Python to PATH"** activée, puis :
+
+```powershell
+pip install pyinstaller
+```
+
+Créer `C:\remove-threat.py` :
+
+```python
+#!/usr/bin/python3
+import sys
+import json
+import os
+import datetime
+
+LOG_FILE = "C:\\Program Files (x86)\\ossec-agent\\active-response\\active-responses.log"
+
+def write_log(msg):
+    with open(LOG_FILE, "a") as f:
+        f.write(f"{datetime.datetime.now()} - {msg}\n")
+
+if __name__ == "__main__":
+    write_log("remove-threat started")
+    input_str = sys.stdin.readline()
+    try:
+        data = json.loads(input_str)
+        command = data.get("command", "")
+        filename = data["parameters"]["alert"]["data"]["virustotal"]["source"]["file"]
+        write_log(f"Command: {command} | File: {filename}")
+        if command == "add":
+            if os.path.exists(filename):
+                os.remove(filename)
+                write_log(f"Successfully removed threat: {filename}")
+            else:
+                write_log(f"File not found: {filename}")
+    except Exception as e:
+        write_log(f"Error removing threat: {e}")
+```
+
+Compiler en exécutable :
+
+```powershell
+pyinstaller -F C:\remove-threat.py
+```
+
+Déplacer l'exécutable :
+
+```powershell
+Move-Item -Path C:\dist\remove-threat.exe `
+  -Destination "C:\Program Files (x86)\ossec-agent\active-response\bin\remove-threat.exe"
+```
+
+Redémarrer l'agent :
+
+```powershell
+Restart-Service -Name wazuh
+```
+
+### 7.8 Test de détection — Fichier EICAR
+
+Le fichier EICAR est un fichier de test standard reconnu comme malveillant par tous les antivirus et VirusTotal, sans danger réel.
+
+#### Test sur Linux (agent)
+
+```bash
+# Télécharger le fichier EICAR dans un répertoire surveillé par FIM
+curl -Lo /root/eicar.com https://secure.eicar.org/eicar.com
+sleep 10
+# Vérifier si le fichier a été supprimé par Active Response
+ls -la /root/eicar.com
+# → No such file or directory (suppression réussie)
+```
+
+#### Test sur Windows (agent)
+
+```powershell
+# Télécharger le fichier EICAR dans le répertoire surveillé
+Invoke-WebRequest -Uri https://secure.eicar.org/eicar.com.txt `
+  -OutFile "C:\Users\<NOM_UTILISATEUR>\Downloads\eicar.txt"
+Start-Sleep -Seconds 10
+# Vérifier si le fichier a été supprimé
+Test-Path "C:\Users\<NOM_UTILISATEUR>\Downloads\eicar.txt"
+# → False (suppression réussie)
+```
+
+### 7.9 Vérification Dashboard
+
+1. Aller dans **Threat Hunting** → **Events**
+2. Filtrer par `rule.groups: virustotal`
+
+**Alertes attendues :**
+
+| Règle | Niveau | Description |
+|-------|--------|-------------|
+| `87105` | 12 | VirusTotal: fichier positif — hash détecté comme malveillant |
+| `87103` | 3 | VirusTotal: fichier non détecté (hash inconnu) |
+| `100092` | 12 | Active Response: fichier malveillant supprimé avec succès |
+| `100093` | 14 | Active Response: échec de suppression |
+
+**Champs clés dans l'alerte VirusTotal :**
+
+| Champ | Description |
+|-------|-------------|
+| `data.virustotal.source.file` | Chemin complet du fichier détecté |
+| `data.virustotal.malicious` | Nombre de moteurs ayant détecté le fichier |
+| `data.virustotal.total` | Nombre total de moteurs ayant analysé le fichier |
+| `data.virustotal.permalink` | Lien direct vers le rapport VirusTotal |
+| `data.virustotal.sha256` | Hash SHA256 soumis |
+
+**Vérifier les logs Active Response sur l'agent :**
+
+```bash
+# Linux
+tail -f /var/ossec/logs/active-responses.log
+
+# Windows (PowerShell)
+Get-Content "C:\Program Files (x86)\ossec-agent\active-response\active-responses.log" -Wait
+```
+
+---
+
+## 8. Opérations courantes
 
 ### Vérifier l'état de tous les services
 
@@ -809,7 +1119,7 @@ systemctl restart wazuh-manager wazuh-indexer wazuh-dashboard filebeat
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### `sysctl : commande introuvable` ou `runuser : commande introuvable`
 
