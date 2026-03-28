@@ -416,6 +416,21 @@ Fichier de configuration : `C:\Program Files (x86)\ossec-agent\ossec.conf`
 
 Redémarrer l'agent via `services.msc` → service **Wazuh**.
 
+#### Test FIM Windows
+
+Créer, modifier ou supprimer un fichier dans le répertoire surveillé (`C:\Users\<utilisateur>\Documents\`), puis vérifier dans le Dashboard → **File Integrity Monitoring** → **Recent events**.
+
+Chaque événement détaille :
+
+| Champ | Description |
+|-------|-------------|
+| Path | Chemin complet du fichier |
+| Action | `added` / `modified` / `deleted` |
+| Date | Horodatage de la modification |
+| MD5 / SHA1 / SHA256 | Empreintes cryptographiques du fichier |
+
+> Les attributs surveillés avec `check_all="yes"` incluent : taille, propriétaire, permissions, MD5, SHA1, SHA256.
+
 ### 5.2 FIM sur Linux
 
 Fichier de configuration : `/var/ossec/etc/ossec.conf`
@@ -433,6 +448,25 @@ systemctl restart wazuh-agent
 systemctl status wazuh-agent
 ```
 
+#### Test FIM Linux
+
+Créer un fichier dans le répertoire surveillé :
+
+```bash
+micro /home/<utilisateur>/Bureau/test-fim.txt
+```
+
+Vérifier dans le Dashboard → **File Integrity Monitoring** → **Recent events** :
+
+| Champ | Description |
+|-------|-------------|
+| Path | Chemin complet du fichier |
+| Action | `added` / `modified` / `deleted` |
+| MD5 / SHA1 / SHA256 | Empreintes cryptographiques |
+| Permissions | Mode du fichier (ex: `rw-r--r--`) |
+
+> Répertoires critiques recommandés à surveiller : `/etc`, `/bin`, `/sbin`, `/usr/bin`, `/home`, `/var/www`
+
 ### 5.3 Mode Whodata (audit avancé)
 
 Le mode **Whodata** enregistre quel utilisateur / processus a modifié un fichier.
@@ -448,6 +482,22 @@ Le mode **Whodata** enregistre quel utilisateur / processus a modifié un fichie
 ```
 
 Redémarrer le service Wazuh.
+
+#### Test Whodata Windows
+
+Créer un fichier texte dans le répertoire surveillé (ex : Bureau), puis vérifier dans le Dashboard → **File Integrity Monitoring** → **Events**.
+
+Informations supplémentaires disponibles en mode Whodata :
+
+| Champ Dashboard | Description |
+|-----------------|-------------|
+| `syscheck.audit.user.name` | Nom d'utilisateur Windows (ex: ERIS-FAD) |
+| `syscheck.audit.user.id` | SID de l'utilisateur |
+| `syscheck.audit.process.name` | Processus ayant effectué la modification (ex: `notepad.exe`) |
+| `syscheck.audit.process.id` | PID du processus |
+| `syscheck.mode` | `whodata` |
+
+> Ces informations permettent de reconstituer précisément le contexte d'une modification — essentiel lors d'une investigation de sécurité.
 
 **Linux — prérequis :**
 
@@ -467,6 +517,29 @@ systemctl restart auditd
 ```bash
 systemctl restart wazuh-agent
 ```
+
+#### Test Whodata Linux
+
+Créer un fichier dans le répertoire surveillé :
+
+```bash
+micro ~/text-who.txt
+```
+
+Vérifier dans le Dashboard → **File Integrity Monitoring** → **Events** :
+
+| Champ Dashboard | Description |
+|-----------------|-------------|
+| `syscheck.audit.effective_user.name` | Utilisateur effectif (ex: `root`) |
+| `syscheck.audit.login_user.name` | Utilisateur connecté (ex: `debian-wazu`) |
+| `syscheck.audit.process.name` | Commande exécutée (ex: `/usr/bin/micro`) |
+| `syscheck.audit.process.id` | PID |
+| `syscheck.audit.process.parent_name` | Processus parent (ex: `/usr/bin/bash`) |
+| `syscheck.audit.process.ppid` | PPID |
+| `syscheck.audit.group.name` | Groupe (ex: `root`) |
+| `syscheck.mode` | `whodata` |
+
+> Traçabilité complète requise pour la conformité PCI-DSS, HIPAA et les audits de sécurité.
 
 ### 5.4 Résolution du problème de connexion à l'Indexer
 
@@ -503,13 +576,32 @@ systemctl status wazuh-manager
 
 L'**Active Response** bloque automatiquement les IPs qui génèrent trop d'échecs d'authentification SSH.
 
-### 6.1 Architecture
+> ⚠️ **Cette démonstration doit être réalisée uniquement dans un environnement de test contrôlé.** L'utilisation d'outils comme Hydra sur des systèmes sans autorisation est illégale.
+
+### 6.1 Architecture du laboratoire
 
 ```
-Machine attaquante → SSH → Machine victime (agent) → Wazuh Manager → firewall-drop → Blocage IP
+Machine attaquante        Machine victime           Wazuh Manager
+(debian-siem)             (debian-wazu2)            (192.168.x.x)
+192.168.x.61              192.168.x.63
+    │                          │                          │
+    │── Hydra SSH ────────────►│── logs port 1514 ───────►│
+    │                          │                          │── Règle 5763 détectée
+    │◄─── IP bloquée (iptables)│◄─── firewall-drop ───────│
 ```
 
-### 6.2 Configuration sur le Manager
+| Machine | Rôle | Outils |
+|---------|------|--------|
+| Attaquante | Lance l'attaque brute-force SSH | Hydra, pwgen |
+| Victime | Cible SSH avec agent Wazuh | SSH server, agent Wazuh |
+| Manager | Détecte et déclenche la réponse | Wazuh Manager |
+
+### 6.2 Configuration de l'Active Response (sur le Manager)
+
+```bash
+# Vérifier que la commande firewall-drop est présente
+cat /var/ossec/etc/ossec.conf | grep -A 4 "firewall-drop"
+```
 
 ```bash
 micro /var/ossec/etc/ossec.conf
@@ -522,32 +614,150 @@ Ajouter dans la section `<ossec_config>` :
   <command>firewall-drop</command>
   <location>local</location>
   <rules_id>5763</rules_id>
-  <timeout>600</timeout>
+  <timeout>180</timeout>
 </active-response>
 ```
 
-> **Règle 5763** : détection d'attaque par force brute SSH (seuil : 8 tentatives)
-> **Timeout** : 600 secondes (10 min) avant déblocage automatique
+| Paramètre | Valeur | Description |
+|-----------|--------|-------------|
+| `<command>` | firewall-drop | Script de blocage via iptables |
+| `<location>` | local | Exécuté sur l'agent victime |
+| `<rules_id>` | 5763 | Règle force brute SSH (8 tentatives en 120s) |
+| `<timeout>` | 180 | Durée du blocage en secondes (3 min) |
+
+> **Règle 5763** : se déclenche après 8 tentatives SSH échouées en moins de 120 secondes — niveau de sévérité 10.
 
 ```bash
 systemctl restart wazuh-manager
+systemctl status wazuh-manager
 ```
 
-### 6.3 Vérifier le blocage
-
-Depuis la machine victime (agent) :
+### 6.3 Préparation de la machine victime
 
 ```bash
-# Vérifier les règles iptables
-iptables -L -n -v | grep <IP-attaquante>
+# Sur la machine victime (debian-wazu2)
 
-# Logs Active Response
-tail -f /var/ossec/logs/active-responses.log
+# 1. Vérifier que SSH est actif
+systemctl status ssh
 
-# Tester manuellement
-/var/ossec/active-response/bin/firewall-drop add - <IP>
-/var/ossec/active-response/bin/firewall-drop delete - <IP>
+# 2. Vérifier l'écoute sur le port 22
+ss -tulpn | grep :22
+
+# 3. Vérifier que l'authentification par mot de passe est activée
+cat /etc/ssh/sshd_config | grep PasswordAuthentication
+# → doit retourner : PasswordAuthentication yes
+
+# Si nécessaire, l'activer :
+micro /etc/ssh/sshd_config
+# → PasswordAuthentication yes
+systemctl restart sshd
+
+# 4. Récupérer l'IP et le nom d'utilisateur ciblé
+hostname -I
+whoami
 ```
+
+### 6.4 Préparation de la machine attaquante
+
+```bash
+# Sur la machine attaquante (debian-siem)
+
+# Mise à jour
+apt update && apt upgrade -y
+
+# Installer Hydra (outil de force brute) et pwgen (générateur de mots de passe)
+apt install -y hydra pwgen
+
+# Générer une liste de 10 mots de passe aléatoires de 8 caractères
+# ⚠️ Ne pas inclure le vrai mot de passe — on simule une attaque ÉCHOUÉE
+pwgen 8 10 > password-list.txt
+cat password-list.txt
+```
+
+### 6.5 Test de connectivité SSH (avant l'attaque)
+
+```bash
+# Depuis la machine attaquante — vérifier que SSH fonctionne vers la victime
+ssh <utilisateur>@<IP-VICTIME>
+# Accepter le fingerprint, entrer le mot de passe, puis se déconnecter
+exit
+```
+
+### 6.6 Lancer l'attaque par force brute
+
+```bash
+# Depuis la machine attaquante
+hydra -l <utilisateur> -P password-list.txt <IP-VICTIME> ssh
+```
+
+| Paramètre | Description |
+|-----------|-------------|
+| `-l <utilisateur>` | Login ciblé (ex: debian-wazu) |
+| `-P password-list.txt` | Fichier de mots de passe |
+| `<IP-VICTIME>` | IP de la machine cible |
+| `ssh` | Protocole attaqué |
+
+**Sortie attendue (attaque échouée) :**
+```
+[DATA] attacking ssh://<IP-VICTIME>:22/
+[ERROR] all children were disabled due to too many connection errors
+```
+
+> Hydra peut afficher "too many connection errors" — c'est normal : l'Active Response a bloqué l'IP avant la fin des tentatives.
+
+### 6.7 Analyser les résultats dans le Dashboard
+
+Aller dans **Threat Hunting** → **Events** (filtrer par l'agent victime) :
+
+| Règle | Description | Niveau |
+|-------|-------------|--------|
+| **5760** | Tentatives d'authentification SSH échouées | 5 |
+| **5763** | Détection d'attaque par force brute SSH → déclenche l'Active Response | 10 |
+| **651** | Blocage de l'IP par firewall-drop | — |
+| **652** | Déblocage automatique de l'IP après expiration du timeout | — |
+
+> Dans l'onglet **MITRE&ATT&CK**, l'attaque est classifiée **T1110** (Brute Force — Credential Access).
+
+### 6.8 Vérifier le blocage et le déblocage automatique
+
+**Depuis la machine attaquante — pendant le blocage actif :**
+
+```bash
+# Test SSH → doit être bloqué
+ssh -o ConnectTimeout=5 <utilisateur>@<IP-VICTIME>
+# → ssh: connect to host <IP-VICTIME> port 22: Connection timed out
+
+# Test Ping → doit être bloqué (blocage total, pas seulement SSH)
+ping -c 3 <IP-VICTIME>
+# → 100% packet loss
+```
+
+**Depuis la machine victime — vérifier le blocage iptables :**
+
+```bash
+iptables -L -n -v | grep <IP-attaquante>
+tail -f /var/ossec/logs/active-responses.log
+```
+
+**Après ~3 minutes — vérifier le déblocage automatique :**
+
+```bash
+# Depuis la machine attaquante
+ping -c 3 <IP-VICTIME>
+# → réponses normales (0% packet loss)
+
+ssh <utilisateur>@<IP-VICTIME>
+# → connexion SSH rétablie
+```
+
+**Résultats validés :**
+
+| Résultat | Valeur |
+|----------|--------|
+| Règle 5763 déclenchée | Après 8 tentatives en ~120 secondes |
+| Blocage effectif | En moins de 2 secondes |
+| Trafic bloqué | 100% (SSH + ICMP) |
+| Déblocage automatique | Après 181 secondes (~3 min) |
 
 ---
 
