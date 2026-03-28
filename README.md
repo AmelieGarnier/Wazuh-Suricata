@@ -1,5 +1,15 @@
 # Wazuh + Suricata — Documentation Technique
 
+![Wazuh](https://img.shields.io/badge/Wazuh-4.13-0070C0?style=flat-square&logo=wazuh&logoColor=white)
+![Suricata](https://img.shields.io/badge/Suricata-6.0.10-EF6C00?style=flat-square&logo=suricata&logoColor=white)
+![Debian](https://img.shields.io/badge/Debian-13-A81D33?style=flat-square&logo=debian&logoColor=white)
+![OpenSearch](https://img.shields.io/badge/OpenSearch-Indexer-005EB8?style=flat-square&logo=opensearch&logoColor=white)
+![VirusTotal](https://img.shields.io/badge/VirusTotal-Intégré-394EFF?style=flat-square&logo=virustotal&logoColor=white)
+![SIEM](https://img.shields.io/badge/SIEM-Single--Node-2E7D32?style=flat-square&logo=shield&logoColor=white)
+![FIM](https://img.shields.io/badge/FIM-Whodata-6A1B9A?style=flat-square&logo=files&logoColor=white)
+![Active Response](https://img.shields.io/badge/Active_Response-Brute_Force-C62828?style=flat-square&logo=security&logoColor=white)
+![Docs](https://img.shields.io/badge/Docs-Runbooks-37474F?style=flat-square&logo=readthedocs&logoColor=white)
+
 > Déploiement d'un SIEM **Wazuh 4.13** intégré avec **Suricata IDS** sur Debian 13.
 > Architecture single-node avec agents Linux et Windows.
 
