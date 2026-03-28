@@ -1,6 +1,6 @@
 # Runbook Suricata — IDS/IPS
 
-> **Environnement :** Debian 12 — IP : `192.168.111.62` — Interface : `ens192`
+> **Environnement :** Debian 13 — IP : `192.168.111.62` — Interface : `ens192`
 > **Version Suricata :** 6.0.10 — Règles : Emerging Threats Open (46 334 règles)
 
 ---
