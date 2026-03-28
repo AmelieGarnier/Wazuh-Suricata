@@ -13,7 +13,7 @@ Déploiement d'un SIEM Wazuh intégré avec Suricata IDS sur Debian 12.
 
 ```
 ┌─────────────────────────────────────────┐
-│          Serveur Wazuh (Debian 12)       │
+│          Serveur Wazuh (Debian 13)       │
 │          192.168.111.62/24               │
 │                                          │
 │  ┌─────────────┐    ┌─────────────────┐  │
