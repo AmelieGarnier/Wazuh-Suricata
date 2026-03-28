@@ -1,14 +1,14 @@
 # Wazuh + Suricata — Documentation Technique
 
-![Wazuh](https://img.shields.io/badge/Wazuh-4.13-0070C0?style=flat-square&logo=wazuh&logoColor=white)
-![Suricata](https://img.shields.io/badge/Suricata-6.0.10-EF6C00?style=flat-square&logo=suricata&logoColor=white)
-![Debian](https://img.shields.io/badge/Debian-13-A81D33?style=flat-square&logo=debian&logoColor=white)
-![OpenSearch](https://img.shields.io/badge/OpenSearch-Indexer-005EB8?style=flat-square&logo=opensearch&logoColor=white)
-![VirusTotal](https://img.shields.io/badge/VirusTotal-Intégré-394EFF?style=flat-square&logo=virustotal&logoColor=white)
-![SIEM](https://img.shields.io/badge/SIEM-Single--Node-2E7D32?style=flat-square&logo=shield&logoColor=white)
-![FIM](https://img.shields.io/badge/FIM-Whodata-6A1B9A?style=flat-square&logo=files&logoColor=white)
-![Active Response](https://img.shields.io/badge/Active_Response-Brute_Force-C62828?style=flat-square&logo=security&logoColor=white)
-![Docs](https://img.shields.io/badge/Docs-Runbooks-37474F?style=flat-square&logo=readthedocs&logoColor=white)
+[![Wazuh](https://img.shields.io/badge/Wazuh-4.13-0070C0?style=flat-square&logo=wazuh&logoColor=white)](https://documentation.wazuh.com/current/index.html)
+[![Suricata](https://img.shields.io/badge/Suricata-6.0.10-EF6C00?style=flat-square&logo=suricata&logoColor=white)](https://suricata.io/)
+[![Debian](https://img.shields.io/badge/Debian-13-A81D33?style=flat-square&logo=debian&logoColor=white)](https://www.debian.org/)
+[![OpenSearch](https://img.shields.io/badge/OpenSearch-Indexer-005EB8?style=flat-square&logo=opensearch&logoColor=white)](https://opensearch.org/)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-Intégré-394EFF?style=flat-square&logo=virustotal&logoColor=white)](https://www.virustotal.com/)
+[![SIEM](https://img.shields.io/badge/SIEM-Single--Node-2E7D32?style=flat-square&logo=shield&logoColor=white)](Runbooks/wazuh-runbook.md)
+[![FIM](https://img.shields.io/badge/FIM-Whodata-6A1B9A?style=flat-square&logo=files&logoColor=white)](Runbooks/wazuh-runbook.md#5-configuration-fim)
+[![Active Response](https://img.shields.io/badge/Active_Response-Brute_Force-C62828?style=flat-square&logo=security&logoColor=white)](Runbooks/wazuh-runbook.md#6-active-response--brute-force)
+[![Docs](https://img.shields.io/badge/Docs-Runbooks-37474F?style=flat-square&logo=readthedocs&logoColor=white)](Runbooks/)
 
 > Déploiement d'un SIEM **Wazuh 4.13** intégré avec **Suricata IDS** sur Debian 13.
 > Architecture single-node avec agents Linux et Windows.
