@@ -54,9 +54,9 @@ Wazuh-Suricata/
 │  ┌──────────────────┐  ┌──────────────────┐  │
 │  │   Wazuh Stack    │  │  Suricata IDS    │  │
 │  │                  │  │                  │  │
-│  │  ▸ Manager       │◄─│  Interface ens192│  │
+│  │  ▸ Manager       │◄─│ Interface enp0s3 │  │
 │  │  ▸ Indexer       │  │  46 334 règles   │  │
-│  │  ▸ Dashboard     │  │  → eve.json      │  │
+│  │  ▸ Dashboard     │  │   → eve.json     │  │
 │  │  ▸ Filebeat      │  └──────────────────┘  │
 │  └──────────────────┘                        │
 └──────────────────────────────────────────────┘
