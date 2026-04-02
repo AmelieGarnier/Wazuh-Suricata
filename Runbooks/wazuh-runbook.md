@@ -417,21 +417,6 @@ Fichier de configuration : `C:\Program Files (x86)\ossec-agent\ossec.conf`
 
 Redémarrer l'agent via `services.msc` → service **Wazuh**.
 
-#### Test FIM Windows
-
-Créer, modifier ou supprimer un fichier dans le répertoire surveillé (`C:\Users\<utilisateur>\Documents\`), puis vérifier dans le Dashboard → **File Integrity Monitoring** → **Recent events**.
-
-Chaque événement détaille :
-
-| Champ | Description |
-|-------|-------------|
-| Path | Chemin complet du fichier |
-| Action | `added` / `modified` / `deleted` |
-| Date | Horodatage de la modification |
-| MD5 / SHA1 / SHA256 | Empreintes cryptographiques du fichier |
-
-> Les attributs surveillés avec `check_all="yes"` incluent : taille, propriétaire, permissions, MD5, SHA1, SHA256.
-
 ### 5.2 FIM sur Linux
 
 Fichier de configuration : `/var/ossec/etc/ossec.conf`
@@ -449,25 +434,6 @@ systemctl restart wazuh-agent
 systemctl status wazuh-agent
 ```
 
-#### Test FIM Linux
-
-Créer un fichier dans le répertoire surveillé :
-
-```bash
-micro /home/<utilisateur>/Bureau/test-fim.txt
-```
-
-Vérifier dans le Dashboard → **File Integrity Monitoring** → **Recent events** :
-
-| Champ | Description |
-|-------|-------------|
-| Path | Chemin complet du fichier |
-| Action | `added` / `modified` / `deleted` |
-| MD5 / SHA1 / SHA256 | Empreintes cryptographiques |
-| Permissions | Mode du fichier (ex: `rw-r--r--`) |
-
-> Répertoires critiques recommandés à surveiller : `/etc`, `/bin`, `/sbin`, `/usr/bin`, `/home`, `/var/www`
-
 ### 5.3 Mode Whodata (audit avancé)
 
 Le mode **Whodata** enregistre quel utilisateur / processus a modifié un fichier.
@@ -483,22 +449,6 @@ Le mode **Whodata** enregistre quel utilisateur / processus a modifié un fichie
 ```
 
 Redémarrer le service Wazuh.
-
-#### Test Whodata Windows
-
-Créer un fichier texte dans le répertoire surveillé (ex : Bureau), puis vérifier dans le Dashboard → **File Integrity Monitoring** → **Events**.
-
-Informations supplémentaires disponibles en mode Whodata :
-
-| Champ Dashboard | Description |
-|-----------------|-------------|
-| `syscheck.audit.user.name` | Nom d'utilisateur Windows (ex: ERIS-FAD) |
-| `syscheck.audit.user.id` | SID de l'utilisateur |
-| `syscheck.audit.process.name` | Processus ayant effectué la modification (ex: `notepad.exe`) |
-| `syscheck.audit.process.id` | PID du processus |
-| `syscheck.mode` | `whodata` |
-
-> Ces informations permettent de reconstituer précisément le contexte d'une modification — essentiel lors d'une investigation de sécurité.
 
 **Linux — prérequis :**
 
@@ -518,29 +468,6 @@ systemctl restart auditd
 ```bash
 systemctl restart wazuh-agent
 ```
-
-#### Test Whodata Linux
-
-Créer un fichier dans le répertoire surveillé :
-
-```bash
-micro ~/text-who.txt
-```
-
-Vérifier dans le Dashboard → **File Integrity Monitoring** → **Events** :
-
-| Champ Dashboard | Description |
-|-----------------|-------------|
-| `syscheck.audit.effective_user.name` | Utilisateur effectif (ex: `root`) |
-| `syscheck.audit.login_user.name` | Utilisateur connecté (ex: `debian-wazu`) |
-| `syscheck.audit.process.name` | Commande exécutée (ex: `/usr/bin/micro`) |
-| `syscheck.audit.process.id` | PID |
-| `syscheck.audit.process.parent_name` | Processus parent (ex: `/usr/bin/bash`) |
-| `syscheck.audit.process.ppid` | PPID |
-| `syscheck.audit.group.name` | Groupe (ex: `root`) |
-| `syscheck.mode` | `whodata` |
-
-> Traçabilité complète requise pour la conformité PCI-DSS, HIPAA et les audits de sécurité.
 
 ### 5.4 Résolution du problème de connexion à l'Indexer
 
@@ -577,32 +504,13 @@ systemctl status wazuh-manager
 
 L'**Active Response** bloque automatiquement les IPs qui génèrent trop d'échecs d'authentification SSH.
 
-> ⚠️ **Cette démonstration doit être réalisée uniquement dans un environnement de test contrôlé.** L'utilisation d'outils comme Hydra sur des systèmes sans autorisation est illégale.
-
-### 6.1 Architecture du laboratoire
+### 6.1 Architecture
 
 ```
-Machine attaquante        Machine victime           Wazuh Manager
-(debian-siem)             (debian-wazu2)            (192.168.x.x)
-192.168.x.61              192.168.x.63
-    │                          │                          │
-    │── Hydra SSH ────────────►│── logs port 1514 ───────►│
-    │                          │                          │── Règle 5763 détectée
-    │◄─── IP bloquée (iptables)│◄─── firewall-drop ───────│
+Machine attaquante → SSH → Machine victime (agent) → Wazuh Manager → firewall-drop → Blocage IP
 ```
 
-| Machine | Rôle | Outils |
-|---------|------|--------|
-| Attaquante | Lance l'attaque brute-force SSH | Hydra, pwgen |
-| Victime | Cible SSH avec agent Wazuh | SSH server, agent Wazuh |
-| Manager | Détecte et déclenche la réponse | Wazuh Manager |
-
-### 6.2 Configuration de l'Active Response (sur le Manager)
-
-```bash
-# Vérifier que la commande firewall-drop est présente
-cat /var/ossec/etc/ossec.conf | grep -A 4 "firewall-drop"
-```
+### 6.2 Configuration sur le Manager
 
 ```bash
 micro /var/ossec/etc/ossec.conf
@@ -615,458 +523,74 @@ Ajouter dans la section `<ossec_config>` :
   <command>firewall-drop</command>
   <location>local</location>
   <rules_id>5763</rules_id>
-  <timeout>180</timeout>
+  <timeout>600</timeout>
 </active-response>
 ```
 
-| Paramètre | Valeur | Description |
-|-----------|--------|-------------|
-| `<command>` | firewall-drop | Script de blocage via iptables |
-| `<location>` | local | Exécuté sur l'agent victime |
-| `<rules_id>` | 5763 | Règle force brute SSH (8 tentatives en 120s) |
-| `<timeout>` | 180 | Durée du blocage en secondes (3 min) |
-
-> **Règle 5763** : se déclenche après 8 tentatives SSH échouées en moins de 120 secondes — niveau de sévérité 10.
+> **Règle 5763** : détection d'attaque par force brute SSH (seuil : 8 tentatives)
+> **Timeout** : 600 secondes (10 min) avant déblocage automatique
 
 ```bash
 systemctl restart wazuh-manager
-systemctl status wazuh-manager
 ```
 
-### 6.3 Préparation de la machine victime
+### 6.3 Vérifier le blocage
+
+Depuis la machine victime (agent) :
 
 ```bash
-# Sur la machine victime (debian-wazu2)
-
-# 1. Vérifier que SSH est actif
-systemctl status ssh
-
-# 2. Vérifier l'écoute sur le port 22
-ss -tulpn | grep :22
-
-# 3. Vérifier que l'authentification par mot de passe est activée
-cat /etc/ssh/sshd_config | grep PasswordAuthentication
-# → doit retourner : PasswordAuthentication yes
-
-# Si nécessaire, l'activer :
-micro /etc/ssh/sshd_config
-# → PasswordAuthentication yes
-systemctl restart sshd
-
-# 4. Récupérer l'IP et le nom d'utilisateur ciblé
-hostname -I
-whoami
-```
-
-### 6.4 Préparation de la machine attaquante
-
-```bash
-# Sur la machine attaquante (debian-siem)
-
-# Mise à jour
-apt update && apt upgrade -y
-
-# Installer Hydra (outil de force brute) et pwgen (générateur de mots de passe)
-apt install -y hydra pwgen
-
-# Générer une liste de 10 mots de passe aléatoires de 8 caractères
-# ⚠️ Ne pas inclure le vrai mot de passe — on simule une attaque ÉCHOUÉE
-pwgen 8 10 > password-list.txt
-cat password-list.txt
-```
-
-### 6.5 Test de connectivité SSH (avant l'attaque)
-
-```bash
-# Depuis la machine attaquante — vérifier que SSH fonctionne vers la victime
-ssh <utilisateur>@<IP-VICTIME>
-# Accepter le fingerprint, entrer le mot de passe, puis se déconnecter
-exit
-```
-
-### 6.6 Lancer l'attaque par force brute
-
-```bash
-# Depuis la machine attaquante
-hydra -l <utilisateur> -P password-list.txt <IP-VICTIME> ssh
-```
-
-| Paramètre | Description |
-|-----------|-------------|
-| `-l <utilisateur>` | Login ciblé (ex: debian-wazu) |
-| `-P password-list.txt` | Fichier de mots de passe |
-| `<IP-VICTIME>` | IP de la machine cible |
-| `ssh` | Protocole attaqué |
-
-**Sortie attendue (attaque échouée) :**
-```
-[DATA] attacking ssh://<IP-VICTIME>:22/
-[ERROR] all children were disabled due to too many connection errors
-```
-
-> Hydra peut afficher "too many connection errors" — c'est normal : l'Active Response a bloqué l'IP avant la fin des tentatives.
-
-### 6.7 Analyser les résultats dans le Dashboard
-
-Aller dans **Threat Hunting** → **Events** (filtrer par l'agent victime) :
-
-| Règle | Description | Niveau |
-|-------|-------------|--------|
-| **5760** | Tentatives d'authentification SSH échouées | 5 |
-| **5763** | Détection d'attaque par force brute SSH → déclenche l'Active Response | 10 |
-| **651** | Blocage de l'IP par firewall-drop | — |
-| **652** | Déblocage automatique de l'IP après expiration du timeout | — |
-
-> Dans l'onglet **MITRE&ATT&CK**, l'attaque est classifiée **T1110** (Brute Force — Credential Access).
-
-### 6.8 Vérifier le blocage et le déblocage automatique
-
-**Depuis la machine attaquante — pendant le blocage actif :**
-
-```bash
-# Test SSH → doit être bloqué
-ssh -o ConnectTimeout=5 <utilisateur>@<IP-VICTIME>
-# → ssh: connect to host <IP-VICTIME> port 22: Connection timed out
-
-# Test Ping → doit être bloqué (blocage total, pas seulement SSH)
-ping -c 3 <IP-VICTIME>
-# → 100% packet loss
-```
-
-**Depuis la machine victime — vérifier le blocage iptables :**
-
-```bash
+# Vérifier les règles iptables
 iptables -L -n -v | grep <IP-attaquante>
+
+# Logs Active Response
 tail -f /var/ossec/logs/active-responses.log
+
+# Tester manuellement
+/var/ossec/active-response/bin/firewall-drop add - <IP>
+/var/ossec/active-response/bin/firewall-drop delete - <IP>
 ```
-
-**Après ~3 minutes — vérifier le déblocage automatique :**
-
-```bash
-# Depuis la machine attaquante
-ping -c 3 <IP-VICTIME>
-# → réponses normales (0% packet loss)
-
-ssh <utilisateur>@<IP-VICTIME>
-# → connexion SSH rétablie
-```
-
-**Résultats validés :**
-
-| Résultat | Valeur |
-|----------|--------|
-| Règle 5763 déclenchée | Après 8 tentatives en ~120 secondes |
-| Blocage effectif | En moins de 2 secondes |
-| Trafic bloqué | 100% (SSH + ICMP) |
-| Déblocage automatique | Après 181 secondes (~3 min) |
 
 ---
 
 ## 7. Intégration VirusTotal
 
-L'intégration VirusTotal permet à Wazuh de soumettre automatiquement le hash SHA256 de tout fichier détecté par FIM à l'API VirusTotal. En cas de détection positive (fichier malveillant), une alerte est générée et une Active Response peut supprimer le fichier automatiquement.
+Wazuh peut enrichir automatiquement les alertes FIM en soumettant les hash de fichiers suspects à l'API VirusTotal.
 
-### 7.1 Fonctionnement
+### 7.1 Récupérer la clé API VirusTotal
 
-```
-Fichier détecté par FIM
-        ↓
-Hash SHA256 extrait
-        ↓
-API VirusTotal interrogée
-        ↓
-┌────────────────┬──────────────────────────┐
-│  Non détecté   │  Détecté (malveillant)   │
-│  → Aucune      │  → Alerte niveau 12      │
-│    action      │  → Active Response       │
-│                │    supprime le fichier   │
-└────────────────┴──────────────────────────┘
-```
+1. Se connecter sur [https://www.virustotal.com](https://www.virustotal.com)
+2. Cliquer sur l'**icône de profil** en haut à droite
+3. Ouvrir **API Keys**
+4. Copier la clé affichée
 
-| Composant | Rôle |
-|-----------|------|
-| **FIM (syscheck)** | Détecte les nouveaux fichiers et extrait leur hash |
-| **Integration VirusTotal** | Envoie le hash à l'API et analyse la réponse |
-| **Active Response** | Supprime automatiquement le fichier malveillant |
+> ⚠️ **Sécurité — ne jamais :**
+> - Committer la clé dans un dépôt Git (même privé)
+> - La laisser apparaître dans des captures d'écran
+> - La laisser dans l'historique shell (`history -c` pour effacer)
+>
+> Si la clé a été exposée, la régénérer immédiatement depuis l'interface VirusTotal.
 
-### 7.2 Prérequis
-
-- Compte VirusTotal gratuit sur [virustotal.com](https://www.virustotal.com)
-- FIM activé sur les agents (cf. section 5)
-- `jq` installé sur les agents Linux
-- Python 3 + PyInstaller sur les agents Windows
-
-**Obtenir la clé API VirusTotal :**
-
-1. Se connecter sur virustotal.com
-2. Menu utilisateur → **Settings** → **API Key**
-3. Copier la clé (limite : 4 requêtes/min avec le compte gratuit)
-
-### 7.3 Configuration Manager — ossec.conf
+### 7.2 Configurer l'intégration dans Wazuh
 
 ```bash
 micro /var/ossec/etc/ossec.conf
 ```
 
-Ajouter le bloc `<integration>` dans `<ossec_config>` :
+Ajouter dans la section `<ossec_config>` :
 
 ```xml
 <integration>
   <name>virustotal</name>
-  <api_key><VOTRE_CLE_API_VIRUSTOTAL></api_key>
+  <api_key>VOTRE_CLE_API_ICI</api_key>
   <group>syscheck</group>
   <alert_format>json</alert_format>
 </integration>
 ```
 
-> Le paramètre `<group>syscheck</group>` déclenche l'intégration sur toutes les alertes FIM. Pour cibler uniquement les nouveaux fichiers ajoutés, utiliser `<rule_id>554</rule_id>` à la place.
-
-### 7.4 Règles personnalisées — local_rules.xml
-
-```bash
-micro /var/ossec/etc/rules/local_rules.xml
-```
-
-Ajouter avant la balise fermante `</group>` finale (ou créer un nouveau groupe) :
-
-```xml
-<group name="virustotal,">
-
-  <rule id="100092" level="12">
-    <if_sid>657</if_sid>
-    <match>Successfully removed threat</match>
-    <description>Active Response: fichier malveillant supprimé — $(parameters.alert.data.virustotal.source.file)</description>
-  </rule>
-
-  <rule id="100093" level="14">
-    <if_sid>657</if_sid>
-    <match>Error removing threat</match>
-    <description>Active Response: échec de suppression — $(parameters.alert.data.virustotal.source.file)</description>
-  </rule>
-
-</group>
-```
-
-### 7.5 Active Response — Configuration Manager
-
-Ajouter dans `/var/ossec/etc/ossec.conf` :
-
-```xml
-<command>
-  <name>remove-threat</name>
-  <executable>remove-threat.sh</executable>
-  <timeout_allowed>no</timeout_allowed>
-</command>
-
-<active-response>
-  <disabled>no</disabled>
-  <command>remove-threat</command>
-  <location>local</location>
-  <rules_group>virustotal</rules_group>
-</active-response>
-```
-
-Redémarrer le Manager :
+> Remplacer `VOTRE_CLE_API_ICI` par la valeur copiée depuis VirusTotal. Ne pas entourer la clé de chevrons `< >`.
 
 ```bash
 systemctl restart wazuh-manager
-```
-
-### 7.6 Configuration Agent Linux
-
-#### Installer jq
-
-```bash
-apt install -y jq
-```
-
-#### Activer FIM en temps réel sur le répertoire à surveiller
-
-Dans `/var/ossec/etc/ossec.conf` de l'agent :
-
-```xml
-<syscheck>
-  <disabled>no</disabled>
-  <directories realtime="yes" check_all="yes">/root,/home,/tmp</directories>
-</syscheck>
-```
-
-#### Créer le script de suppression Active Response
-
-```bash
-micro /var/ossec/active-response/bin/remove-threat.sh
-```
-
-```bash
-#!/bin/bash
-
-LOCAL=$(dirname "$0")
-cd "$LOCAL" || exit
-cd ../ || exit
-
-read INPUT_JSON
-FILENAME=$(echo "$INPUT_JSON" | jq -r '.parameters.alert.data.virustotal.source.file')
-COMMAND=$(echo "$INPUT_JSON" | jq -r '.command')
-LOG_FILE="$(pwd)/../logs/active-responses.log"
-
-echo "$(date '+%Y/%m/%d %H:%M:%S') - remove-threat started" >> "${LOG_FILE}"
-echo "$(date '+%Y/%m/%d %H:%M:%S') - Command: ${COMMAND}" >> "${LOG_FILE}"
-echo "$(date '+%Y/%m/%d %H:%M:%S') - File: ${FILENAME}" >> "${LOG_FILE}"
-
-if [ "${COMMAND}" = "add" ]; then
-    if rm -f "${FILENAME}"; then
-        echo "$(date '+%Y/%m/%d %H:%M:%S') Successfully removed threat: ${FILENAME}" >> "${LOG_FILE}"
-    else
-        echo "$(date '+%Y/%m/%d %H:%M:%S') Error removing threat: ${FILENAME}" >> "${LOG_FILE}"
-    fi
-fi
-```
-
-Appliquer les permissions :
-
-```bash
-chmod 750 /var/ossec/active-response/bin/remove-threat.sh
-chown root:wazuh /var/ossec/active-response/bin/remove-threat.sh
-```
-
-Redémarrer l'agent :
-
-```bash
-systemctl restart wazuh-agent
-```
-
-### 7.7 Configuration Agent Windows
-
-#### Activer FIM en temps réel
-
-Dans `C:\Program Files (x86)\ossec-agent\ossec.conf` :
-
-```xml
-<syscheck>
-  <disabled>no</disabled>
-  <directories realtime="yes">C:\Users\<NOM_UTILISATEUR>\Downloads,C:\Users\<NOM_UTILISATEUR>\Desktop</directories>
-</syscheck>
-```
-
-#### Créer le script de suppression Active Response
-
-Installer Python 3 avec l'option **"Add Python to PATH"** activée, puis :
-
-```powershell
-pip install pyinstaller
-```
-
-Créer `C:\remove-threat.py` :
-
-```python
-#!/usr/bin/python3
-import sys
-import json
-import os
-import datetime
-
-LOG_FILE = "C:\\Program Files (x86)\\ossec-agent\\active-response\\active-responses.log"
-
-def write_log(msg):
-    with open(LOG_FILE, "a") as f:
-        f.write(f"{datetime.datetime.now()} - {msg}\n")
-
-if __name__ == "__main__":
-    write_log("remove-threat started")
-    input_str = sys.stdin.readline()
-    try:
-        data = json.loads(input_str)
-        command = data.get("command", "")
-        filename = data["parameters"]["alert"]["data"]["virustotal"]["source"]["file"]
-        write_log(f"Command: {command} | File: {filename}")
-        if command == "add":
-            if os.path.exists(filename):
-                os.remove(filename)
-                write_log(f"Successfully removed threat: {filename}")
-            else:
-                write_log(f"File not found: {filename}")
-    except Exception as e:
-        write_log(f"Error removing threat: {e}")
-```
-
-Compiler en exécutable :
-
-```powershell
-pyinstaller -F C:\remove-threat.py
-```
-
-Déplacer l'exécutable :
-
-```powershell
-Move-Item -Path C:\dist\remove-threat.exe `
-  -Destination "C:\Program Files (x86)\ossec-agent\active-response\bin\remove-threat.exe"
-```
-
-Redémarrer l'agent :
-
-```powershell
-Restart-Service -Name wazuh
-```
-
-### 7.8 Test de détection — Fichier EICAR
-
-Le fichier EICAR est un fichier de test standard reconnu comme malveillant par tous les antivirus et VirusTotal, sans danger réel.
-
-#### Test sur Linux (agent)
-
-```bash
-# Télécharger le fichier EICAR dans un répertoire surveillé par FIM
-curl -Lo /root/eicar.com https://secure.eicar.org/eicar.com
-sleep 10
-# Vérifier si le fichier a été supprimé par Active Response
-ls -la /root/eicar.com
-# → No such file or directory (suppression réussie)
-```
-
-#### Test sur Windows (agent)
-
-```powershell
-# Télécharger le fichier EICAR dans le répertoire surveillé
-Invoke-WebRequest -Uri https://secure.eicar.org/eicar.com.txt `
-  -OutFile "C:\Users\<NOM_UTILISATEUR>\Downloads\eicar.txt"
-Start-Sleep -Seconds 10
-# Vérifier si le fichier a été supprimé
-Test-Path "C:\Users\<NOM_UTILISATEUR>\Downloads\eicar.txt"
-# → False (suppression réussie)
-```
-
-### 7.9 Vérification Dashboard
-
-1. Aller dans **Threat Hunting** → **Events**
-2. Filtrer par `rule.groups: virustotal`
-
-**Alertes attendues :**
-
-| Règle | Niveau | Description |
-|-------|--------|-------------|
-| `87105` | 12 | VirusTotal: fichier positif — hash détecté comme malveillant |
-| `87103` | 3 | VirusTotal: fichier non détecté (hash inconnu) |
-| `100092` | 12 | Active Response: fichier malveillant supprimé avec succès |
-| `100093` | 14 | Active Response: échec de suppression |
-
-**Champs clés dans l'alerte VirusTotal :**
-
-| Champ | Description |
-|-------|-------------|
-| `data.virustotal.source.file` | Chemin complet du fichier détecté |
-| `data.virustotal.malicious` | Nombre de moteurs ayant détecté le fichier |
-| `data.virustotal.total` | Nombre total de moteurs ayant analysé le fichier |
-| `data.virustotal.permalink` | Lien direct vers le rapport VirusTotal |
-| `data.virustotal.sha256` | Hash SHA256 soumis |
-
-**Vérifier les logs Active Response sur l'agent :**
-
-```bash
-# Linux
-tail -f /var/ossec/logs/active-responses.log
-
-# Windows (PowerShell)
-Get-Content "C:\Program Files (x86)\ossec-agent\active-response\active-responses.log" -Wait
 ```
 
 ---

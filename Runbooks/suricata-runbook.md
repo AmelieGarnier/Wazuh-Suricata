@@ -1,6 +1,6 @@
 # Runbook Suricata — IDS/IPS
 
-> **Environnement :** Debian 13 — IP : `192.168.111.62` — Interface : `ens192`
+> **Environnement :** Debian 13 — IP : `<IP-SERVEUR>` — Interface : `enp0s3`
 > **Version Suricata :** 6.0.10 — Règles : Emerging Threats Open (46 334 règles)
 
 ---
@@ -29,7 +29,7 @@ ip addr show
 
 | Interface | IP | État |
 |-----------|-----|------|
-| `ens192` | 192.168.111.62/24 | UP |
+| `enp0s3` | 192.168.1.50/24 | UP |
 | `lo` | 127.0.0.1 | UP |
 
 ### Mettre à jour le système
@@ -61,7 +61,10 @@ apt install -y suricata jq
 La désactivation de GRO/LRO évite des problèmes de checksum et garantit une capture complète des paquets :
 
 ```bash
-ethtool -K ens192 gro off lro off
+# Installer ethtool si absent
+apt install -y ethtool
+
+ethtool -K enp0s3 gro off lro off
 ```
 
 Rendre persistant via systemd :
@@ -69,12 +72,12 @@ Rendre persistant via systemd :
 ```bash
 cat > /etc/systemd/system/disable-offload.service << 'EOF'
 [Unit]
-Description=Disable GRO/LRO on ens192
+Description=Disable GRO/LRO on enp0s3
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/sbin/ethtool -K ens192 gro off lro off
+ExecStart=/sbin/ethtool -K enp0s3 gro off lro off
 RemainAfterExit=yes
 
 [Install]
@@ -100,7 +103,7 @@ Localiser la section `af-packet` (lignes ~587-623) :
 
 ```yaml
 af-packet:
-  - interface: ens192
+  - interface: enp0s3
     threads: 2
     cluster-id: 99
     cluster-type: cluster_flow
@@ -112,7 +115,7 @@ Explications des paramètres :
 
 | Paramètre | Valeur | Description |
 |-----------|--------|-------------|
-| `interface` | ens192 | Interface réseau principale |
+| `interface` | enp0s3 | Interface réseau principale |
 | `threads` | 2 | Traitement parallèle (adapter au nombre de cœurs CPU) |
 | `cluster-id` | 99 | Identifiant unique pour l'équilibrage de charge |
 | `cluster-type` | cluster_flow | Tous les paquets d'un flux → même thread (cohérence d'analyse) |
@@ -128,7 +131,7 @@ Section `vars` (lignes ~15-51) :
 ```yaml
 vars:
   address-groups:
-    HOME_NET: "[192.168.111.0/24]"
+    HOME_NET: "[192.168.1.0/24]"
     EXTERNAL_NET: "!$HOME_NET"
 
     HTTP_SERVERS: "$HOME_NET"
@@ -205,7 +208,20 @@ outputs:
 
 ### 4.1 Activer les règles Emerging Threats Open
 
+Avant de télécharger les règles, vérifier que la résolution DNS fonctionne :
+
 ```bash
+ping -c 2 google.com
+```
+
+Si la résolution échoue :
+
+```bash
+echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+```
+
+```bash
+suricata-update update-sources
 suricata-update enable-source et/open
 ```
 
@@ -228,7 +244,7 @@ suricata-update
 ```
 
 **Résultat attendu :**
-- Source : `https://rules.emergingthreats.net/open/suricata6.0.10/emerging.rules.tar.gz`
+- Source : `https://rules.emergingthreats.net/open/suricata-6.0.10/emerging.rules.tar.gz`
 - Téléchargement : ~5,2 Mo
 - Règles chargées : 62 149
 - Règles désactivées (protocoles non utilisés) : 14
@@ -303,8 +319,8 @@ systemctl restart wazuh-manager
 
 ```bash
 # Vérifier que Wazuh lit le fichier eve.json
-grep -i suricata /var/ossec/logs/ossec.log
-grep -i "eve.json" /var/ossec/logs/ossec.log
+grep -ia suricata /var/ossec/logs/ossec.log
+grep -ia "eve.json" /var/ossec/logs/ossec.log
 
 # Inspecter les événements JSON Suricata
 tail -50 /var/log/suricata/eve.json | jq
@@ -342,10 +358,10 @@ crontab -e
 Ajouter :
 
 ```cron
-0 2 * * * /usr/bin/suricata-update && systemctl reload suricata
+0 2 * * * /usr/bin/suricata-update && systemctl restart suricata
 ```
 
-> Met à jour les règles chaque nuit à 2h00 et recharge Suricata.
+> Met à jour les règles chaque nuit à 2h00 et redémarre Suricata. Le `restart` est préférable au `reload` qui peut expirer avec un grand nombre de règles.
 
 Vérifier le cron :
 
@@ -362,10 +378,11 @@ micro /etc/logrotate.d/suricata
 ```
 /var/log/suricata/*.log /var/log/suricata/*.json {
     daily
-    rotate 7
+    rotate 14
     compress
     missingok
     notifempty
+    copytruncate
     postrotate
         systemctl reload suricata 2>/dev/null || true
     endscript
@@ -483,6 +500,29 @@ ls -la /var/log/suricata/
 
 ---
 
+### `ethtool : commande introuvable`
+
+```bash
+apt install -y ethtool
+ethtool -K enp0s3 gro off lro off
+```
+
+---
+
+### Erreur DNS lors de `suricata-update`
+
+```
+Failed to fetch ... <urlopen error [Errno -3] Temporary failure in name resolution>
+```
+
+```bash
+echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+suricata-update update-sources
+suricata-update
+```
+
+---
+
 ### Aucune alerte dans eve.json
 
 ```bash
@@ -493,7 +533,7 @@ ps aux | grep suricata
 grep "rules loaded" /var/log/suricata/suricata.log
 
 # S'assurer que l'interface est UP
-ip link show ens192
+ip link show enp0s3
 
 # Tester manuellement
 curl http://www.testmyids.com
@@ -513,7 +553,7 @@ ls -la /var/log/suricata/eve.json
 # → doit être lisible par root (644 minimum)
 
 # 3. Vérifier les erreurs dans les logs Wazuh
-tail -f /var/ossec/logs/ossec.log | grep -i "suricata\|eve\|json"
+tail -f /var/ossec/logs/ossec.log | grep -ia "suricata\|eve\|json"
 
 # 4. Corriger les permissions si nécessaire
 chmod 644 /var/log/suricata/eve.json
