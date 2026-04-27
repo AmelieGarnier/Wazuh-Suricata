@@ -253,6 +253,9 @@ suricata-update
 
 > **Flowbits** : mécanisme permettant de corréler plusieurs événements réseau. Certaines règles nécessitent que d'autres soient activées pour fonctionner. Les 136 règles auto-activées garantissent la cohérence des détections basées sur des corrélations.
 
+![46 334 règles chargées](../Screenshots/18-suricata-rules-loaded.png)
+*Sortie de `suricata-update` : 46 334 règles actives déployées dans `/var/lib/suricata/rules/suricata.rules`*
+
 ### 4.4 Valider la configuration
 
 ```bash
@@ -349,6 +352,9 @@ systemctl start suricata
 systemctl status suricata
 ```
 
+![Suricata — service actif](../Screenshots/16-suricata-service-status.png)
+*systemctl status suricata : service `active (running)`, interface AF_PACKET initialisée*
+
 ### 6.3 Automatiser la mise à jour des règles (cron)
 
 ```bash
@@ -414,6 +420,9 @@ tail -f /var/log/suricata/eve.json | jq 'select(.event_type == "alert")'
 tail -50 /var/log/suricata/eve.json | jq '{type: .event_type, src: .src_ip, dest: .dest_ip, alert: .alert.signature}'
 ```
 
+![Alerte eve.json filtrée avec jq](../Screenshots/17-eve-json-alert-jq.png)
+*Sortie eve.json : événement `alert` avec signature, IP source/destination, catégorie et sévérité*
+
 ### 7.3 Vérifier dans Wazuh Dashboard
 
 1. Aller dans **Threat Hunting** → **Events**
@@ -427,6 +436,15 @@ tail -50 /var/log/suricata/eve.json | jq '{type: .event_type, src: .src_ip, dest
    - Timestamp
 
 > Exemple d'alerte attendue : **GPL ATTACK_RESPONSE id check returned root** — déclenchée par le test `curl http://www.testmyids.com`
+
+![Alerte GPL ATTACK_RESPONSE dans Wazuh](../Screenshots/19-suricata-gpl-alert-wazuh.png)
+*Alerte Suricata visible dans le Dashboard Wazuh avec tous les champs EVE : signature, src_ip, dest_ip, proto*
+
+![Threat Hunting — filtre Suricata](../Screenshots/20-suricata-threat-hunting-filter.png)
+*Dashboard Wazuh → Threat Hunting filtré sur `data.event_type: alert` — alertes Suricata en temps réel*
+
+![Alertes Suricata intégrées dans Wazuh](../Screenshots/13-suricata-alerts-wazuh.png)
+*Vue consolidée : alertes Suricata IDS corrélées avec les événements Wazuh dans le même Dashboard*
 
 ---
 
