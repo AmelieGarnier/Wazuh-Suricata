@@ -333,6 +333,12 @@ systemctl status wazuh-manager wazuh-indexer wazuh-dashboard
 
 > ⚠️ **Changer le mot de passe admin** après la première connexion via le Dashboard → Administration → Security → Users.
 
+![Services Wazuh actifs](../Screenshots/14-manager-services-status.png)
+*Tous les services en état `active (running)` — Manager, Indexer, Dashboard, Filebeat*
+
+![Dashboard Wazuh — page d'accueil](../Screenshots/01-dashboard-home.png)
+*Page d'accueil du Dashboard après connexion — vue générale des alertes et de l'état du cluster*
+
 ### 3.5 Configurer la connexion Dashboard → Manager (API)
 
 ```bash
@@ -397,6 +403,12 @@ NET START Wazuh
 /var/ossec/bin/agent_control -i 001
 ```
 
+![Agents connectés — Dashboard](../Screenshots/02-agents-list.png)
+*Liste des agents dans le Dashboard — statut `Active` confirmé pour les agents Linux et Windows*
+
+![Agent connecté — statut Active](../Screenshots/15-agent-connected-dashboard.png)
+*Détail d'un agent : version, OS, dernière connexion*
+
 ---
 
 ## 5. Configuration FIM
@@ -416,6 +428,12 @@ Fichier de configuration : `C:\Program Files (x86)\ossec-agent\ossec.conf`
 ```
 
 Redémarrer l'agent via `services.msc` → service **Wazuh**.
+
+![Événements FIM — liste](../Screenshots/03-fim-events-list.png)
+*Dashboard → File Integrity Monitoring → Recent Events — liste des fichiers modifiés/créés/supprimés*
+
+![Détail événement FIM Windows](../Screenshots/04-fim-event-detail-windows.png)
+*Détail d'une alerte FIM Windows : chemin, action (added/modified/deleted), hash MD5/SHA1/SHA256*
 
 ### 5.2 FIM sur Linux
 
@@ -468,6 +486,9 @@ systemctl restart auditd
 ```bash
 systemctl restart wazuh-agent
 ```
+
+![Champs Whodata dans le Dashboard](../Screenshots/05-fim-whodata-detail.png)
+*Alerte FIM avec mode Whodata : utilisateur effectif, processus parent, PID — traçabilité complète*
 
 ### 5.4 Résolution du problème de connexion à l'Indexer
 
@@ -550,6 +571,18 @@ tail -f /var/ossec/logs/active-responses.log
 /var/ossec/active-response/bin/firewall-drop delete - <IP>
 ```
 
+![Threat Hunting — Security Events](../Screenshots/06-threat-hunting.png)
+*Vue Threat Hunting : recherche des événements brute-force par règle ou agent*
+
+![Alerte règle 5763 — Brute Force SSH](../Screenshots/07-brute-force-alert-5763.png)
+*Règle 5763 déclenchée après 8 tentatives SSH échouées — niveau 10, catégorie authentication_failures*
+
+![Blocage Active Response confirmé](../Screenshots/08-active-response-block.png)
+*iptables DROP appliqué sur l'IP attaquante — trafic SSH et ICMP bloqué*
+
+![MITRE ATT&CK T1110](../Screenshots/09-mitre-attack-t1110.png)
+*Correspondance MITRE ATT&CK T1110 (Brute Force) visible dans le détail de l'alerte*
+
 ---
 
 ## 7. Intégration VirusTotal
@@ -592,6 +625,15 @@ Ajouter dans la section `<ossec_config>` :
 ```bash
 systemctl restart wazuh-manager
 ```
+
+![Alerte VirusTotal — détection positive](../Screenshots/10-virustotal-alert-positive.png)
+*Règle 87105 déclenchée — fichier détecté comme malveillant par plusieurs moteurs VirusTotal*
+
+![Détail alerte VirusTotal — hash et permalink](../Screenshots/11-virustotal-detail-hash.png)
+*Champs clés : hash SHA256, nombre de moteurs positifs/total, lien direct vers le rapport VirusTotal*
+
+![Active Response — fichier supprimé](../Screenshots/12-active-response-remove-threat.png)
+*Règle 100092 : Active Response a supprimé automatiquement le fichier malveillant détecté*
 
 ---
 

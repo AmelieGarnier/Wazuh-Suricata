@@ -1,7 +1,7 @@
 # Runbook Suricata — IDS/IPS
 
-> **Environnement :** Debian 13 — IP : `192.168.1.50` — Interface : `enp0s3`
-> **Version Suricata :** 7.0.10 — Règles : Emerging Threats Open (46 334 règles)
+> **Environnement :** Debian 13 — IP : `<IP-SERVEUR>` — Interface : `enp0s3`
+> **Version Suricata :** 6.0.10 — Règles : Emerging Threats Open (46 334 règles)
 
 ---
 
@@ -41,6 +41,9 @@ apt update && apt upgrade -y
 ---
 
 ## 2. Installation
+
+![Architecture Suricata — vue d'ensemble](../Screenshots/suricata-01-architecture.png)
+*Architecture Suricata : capture AF_PACKET sur enp0s3, analyse par règles ET Open, export EVE-JSON vers Wazuh*
 
 ### Installer Suricata et ses dépendances
 
@@ -123,6 +126,9 @@ Explications des paramètres :
 | `use-mmap` | yes | Amélioration des performances avec RSS → réduction de la latence |
 
 > **AF_PACKET** permet la capture haute performance directement depuis le noyau Linux sans copie mémoire.
+
+![Configuration AF_PACKET dans suricata.yaml](../Screenshots/suricata-02-afpacket-config.png)
+*Section `af-packet` de suricata.yaml : interface enp0s3, 2 threads, cluster_flow*
 
 ### 3.3 Définition des zones réseau
 
@@ -231,6 +237,9 @@ suricata-update enable-source et/open
 suricata-update list-sources
 ```
 
+![Sources de règles disponibles](../Screenshots/suricata-03-list-sources.png)
+*Sortie de `suricata-update list-sources` : sources disponibles dont `et/open` (gratuite)*
+
 | Source | Type | Description |
 |--------|------|-------------|
 | `et/open` | Gratuite | Emerging Threats Open — 46 334 règles |
@@ -244,7 +253,7 @@ suricata-update
 ```
 
 **Résultat attendu :**
-- Source : `https://rules.emergingthreats.net/open/suricata-7.0.10/emerging.rules.tar.gz`
+- Source : `https://rules.emergingthreats.net/open/suricata-6.0.10/emerging.rules.tar.gz`
 - Téléchargement : ~5,2 Mo
 - Règles chargées : 62 149
 - Règles désactivées (protocoles non utilisés) : 14
@@ -252,6 +261,9 @@ suricata-update
 - Règles actives déployées : **46 334** (74,6%)
 
 > **Flowbits** : mécanisme permettant de corréler plusieurs événements réseau. Certaines règles nécessitent que d'autres soient activées pour fonctionner. Les 136 règles auto-activées garantissent la cohérence des détections basées sur des corrélations.
+
+![46 334 règles chargées](../Screenshots/18-suricata-rules-loaded.png)
+*Sortie de `suricata-update` : 46 334 règles actives déployées dans `/var/lib/suricata/rules/suricata.rules`*
 
 ### 4.4 Valider la configuration
 
@@ -292,6 +304,9 @@ Ajouter dans `<ossec_config>` :
 </localfile>
 ```
 
+![Configuration localfile dans ossec.conf](../Screenshots/suricata-04-localfile-config.png)
+*Bloc `<localfile>` ajouté dans ossec.conf : format json, chemin eve.json*
+
 ### 5.2 Résoudre les erreurs de décodage JSON
 
 Si des erreurs apparaissent dans `/var/ossec/logs/ossec.log` liées à des événements `stats` volumineux :
@@ -314,6 +329,9 @@ chmod 644 /var/log/suricata/eve.json
 # Vérifier l'owner actuel : ls -la /var/log/suricata/eve.json
 systemctl restart wazuh-manager
 ```
+
+![Permissions eve.json — vérification](../Screenshots/suricata-05-eve-permissions.png)
+*`ls -la /var/log/suricata/eve.json` : permissions 644, owner suricata — Wazuh peut lire, Suricata peut écrire*
 
 ### 5.4 Vérifier l'intégration
 
@@ -348,6 +366,9 @@ systemctl enable suricata
 systemctl start suricata
 systemctl status suricata
 ```
+
+![Suricata — service actif](../Screenshots/16-suricata-service-status.png)
+*systemctl status suricata : service `active (running)`, interface AF_PACKET initialisée*
 
 ### 6.3 Automatiser la mise à jour des règles (cron)
 
@@ -404,6 +425,9 @@ sleep 2
 curl http://www.testmyids.com
 ```
 
+![Test curl testmyids.com](../Screenshots/suricata-06-test-curl.png)
+*Résultat du `curl http://www.testmyids.com` — réponse `uid=0(root)` déclenchant la règle GPL ATTACK_RESPONSE*
+
 ### 7.2 Vérifier les alertes dans eve.json
 
 ```bash
@@ -413,6 +437,9 @@ tail -f /var/log/suricata/eve.json | jq 'select(.event_type == "alert")'
 # Derniers événements
 tail -50 /var/log/suricata/eve.json | jq '{type: .event_type, src: .src_ip, dest: .dest_ip, alert: .alert.signature}'
 ```
+
+![Alerte eve.json filtrée avec jq](../Screenshots/17-eve-json-alert-jq.png)
+*Sortie eve.json : événement `alert` avec signature, IP source/destination, catégorie et sévérité*
 
 ### 7.3 Vérifier dans Wazuh Dashboard
 
@@ -427,6 +454,15 @@ tail -50 /var/log/suricata/eve.json | jq '{type: .event_type, src: .src_ip, dest
    - Timestamp
 
 > Exemple d'alerte attendue : **GPL ATTACK_RESPONSE id check returned root** — déclenchée par le test `curl http://www.testmyids.com`
+
+![Alerte GPL ATTACK_RESPONSE dans Wazuh](../Screenshots/19-suricata-gpl-alert-wazuh.png)
+*Alerte Suricata visible dans le Dashboard Wazuh avec tous les champs EVE : signature, src_ip, dest_ip, proto*
+
+![Threat Hunting — filtre Suricata](../Screenshots/20-suricata-threat-hunting-filter.png)
+*Dashboard Wazuh → Threat Hunting filtré sur `data.event_type: alert` — alertes Suricata en temps réel*
+
+![Alertes Suricata intégrées dans Wazuh](../Screenshots/13-suricata-alerts-wazuh.png)
+*Vue consolidée : alertes Suricata IDS corrélées avec les événements Wazuh dans le même Dashboard*
 
 ---
 
