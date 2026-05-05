@@ -2,19 +2,22 @@
 
 Placer ici les captures d'écran référencées dans les runbooks.
 
-## Wazuh (10 captures)
+## Wazuh (13 captures)
 
 | Fichier | Section | Description |
 |---------|---------|-------------|
 | `01-dashboard-home.png` | Wazuh §3.4 | Page d'accueil du Dashboard après connexion |
-| `02-agents-list.png` | Wazuh §4.3 | Liste des agents connectés |
+| `02-agents-list.png` | Wazuh §4.3 | Liste des agents connectés (Linux + Windows) |
+| `15-agent-connected-dashboard.png` | Wazuh §4.3 | Agent 001 — statut Active, version, OS |
 | `03-fim-events-list.png` | Wazuh §5 | Liste des événements FIM |
 | `04-fim-event-detail-windows.png` | Wazuh §5.1 | Détail d'un événement FIM Windows |
 | `05-fim-whodata-detail.png` | Wazuh §5.3 | Champs Whodata (utilisateur + processus) |
+| `06-threat-hunting.png` | Wazuh §6.3 | Threat Hunting — 80 événements Authentication failure |
 | `07-brute-force-alert-5763.png` | Wazuh §6.2 | Alerte règle 5763 brute-force SSH |
 | `08-active-response-block.png` | Wazuh §6.3 | Confirmation blocage Active Response |
 | `09-mitre-attack-t1110.png` | Wazuh §6 | MITRE ATT&CK T1110 dans le Dashboard |
-| `10-virustotal-alert-positive.png` | Wazuh §7.2 | Alerte VirusTotal — fichier détecté |
+| `10-virustotal-alert-positive.png` | Wazuh §7.2 | Alerte VirusTotal — fichier détecté (66/71 moteurs) |
+| `11-virustotal-detail-hash.png` | Wazuh §7.2 | Détail VT : permalink + positives/total |
 | `14-manager-services-status.png` | Wazuh §3.4 | systemctl status des 4 services |
 
 ## Suricata (12 captures)

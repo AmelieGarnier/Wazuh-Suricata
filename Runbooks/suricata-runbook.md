@@ -43,6 +43,7 @@ apt update && apt upgrade -y
 ## 2. Installation
 
 ![Architecture Suricata — vue d'ensemble](../Screenshots/suricata-01-architecture.png)
+
 *Architecture Suricata : capture AF_PACKET sur enp0s3, analyse par règles ET Open, export EVE-JSON vers Wazuh*
 
 ### Installer Suricata et ses dépendances
