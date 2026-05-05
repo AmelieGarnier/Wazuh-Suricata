@@ -407,7 +407,7 @@ NET START Wazuh
 *Liste des agents dans le Dashboard — statut `Active` confirmé pour les agents Linux et Windows*
 
 ![Agent connecté — statut Active](../Screenshots/15-agent-connected-dashboard.png)
-*Détail d'un agent : version, OS, dernière connexion*
+*Agent 001 en statut `Active` — version v4.13.1, OS Debian GNU/Linux 12, groupe par défaut*
 
 ---
 
@@ -572,7 +572,7 @@ tail -f /var/ossec/logs/active-responses.log
 ```
 
 ![Threat Hunting — Security Events](../Screenshots/06-threat-hunting.png)
-*Vue Threat Hunting : recherche des événements brute-force par règle ou agent*
+*Threat Hunting filtré sur "Authentication failure" : 80 événements, Top 5 alertes brute-force SSH par agent*
 
 ![Alerte règle 5763 — Brute Force SSH](../Screenshots/07-brute-force-alert-5763.png)
 *Règle 5763 déclenchée après 8 tentatives SSH échouées — niveau 10, catégorie authentication_failures*
@@ -613,7 +613,7 @@ Ajouter dans la section `<ossec_config>` :
 
 ```xml
 <integration>
-  <n>virustotal</n>
+  <name>virustotal</name>
   <api_key>VOTRE_CLE_API_ICI</api_key>
   <group>syscheck</group>
   <alert_format>json</alert_format>
@@ -630,10 +630,7 @@ systemctl restart wazuh-manager
 *Règle 87105 déclenchée — fichier détecté comme malveillant par plusieurs moteurs VirusTotal*
 
 ![Détail alerte VirusTotal — hash et permalink](../Screenshots/11-virustotal-detail-hash.png)
-*Champs clés : hash SHA256, nombre de moteurs positifs/total, lien direct vers le rapport VirusTotal*
-
-![Active Response — fichier supprimé](../Screenshots/12-active-response-remove-threat.png)
-*Règle 100092 : Active Response a supprimé automatiquement le fichier malveillant détecté*
+*Table des détections : `data.virustotal.positives` = 66/71, `data.virustotal.permalink` = lien direct vers le rapport VirusTotal*
 
 ---
 
