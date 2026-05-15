@@ -319,7 +319,7 @@ micro /var/ossec/etc/internal_options.conf
 Modifier ou ajouter :
 
 ```
-analysisd.decoder_order_size=512
+analysisd.decoder_order_size=1024
 ```
 
 ### 5.3 Corriger les permissions et redémarrer
