@@ -764,6 +764,27 @@ ufw allow 9200/tcp
 
 ---
 
+### Wazuh Indexer ne démarre pas correctement au boot (délai de démarrage)
+
+Si l'indexer échoue au démarrage automatique (notamment après un redémarrage système), c'est souvent un problème de timing — le service démarre avant que le réseau ou les dépendances soient prêts. Ajouter un délai de 30 secondes via un override systemd :
+
+```bash
+mkdir -p /etc/systemd/system/wazuh-indexer.service.d/
+cat > /etc/systemd/system/wazuh-indexer.service.d/override.conf << 'EOF'
+[Service]
+ExecStartPre=/bin/sleep 30
+EOF
+
+systemctl daemon-reload
+
+# Vérifier que c'est bien en place
+cat /etc/systemd/system/wazuh-indexer.service.d/override.conf
+```
+
+> Après ce changement, le service attendra 30 secondes avant de démarrer l'indexer à chaque boot.
+
+---
+
 ### Erreur Dashboard : "no template found for wazuh-alerts-*"
 
 Le template d'index Filebeat n'est pas chargé :
